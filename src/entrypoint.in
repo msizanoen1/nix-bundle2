@@ -1,5 +1,5 @@
 #!/bin/sh
 apppath="$(dirname "$(realpath "$0")")"
 exec "$apppath/nix-user-chroot" \
-    "$apppath/nix" \
+    "$apppath/nix/store" \
     @NIX_BINARY@ "$@"
