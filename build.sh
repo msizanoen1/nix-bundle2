@@ -9,5 +9,5 @@ cat $src/entrypoint.in \
     | cat > $out/$wrapperName
 chmod +x $out/$wrapperName
 ln -sf $wrapperName $out/AppRun
-cp $src/nix-user-chroot $out/
+cp $src/nixon $out/
 cp -r $(cat $storePaths) $out/nix/store/
