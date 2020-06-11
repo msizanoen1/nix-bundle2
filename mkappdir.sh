@@ -1,5 +1,5 @@
 #!/bin/sh
-if [ -z "$1$2$3" ]
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]
 then
     echo "Usage: mkappdir.sh PACKAGE BINARY OUTDIRLINK"
     exit 1
