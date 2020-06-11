@@ -53,7 +53,7 @@ impl std::ops::DerefMut for AutoUnmount {
 impl Drop for AutoUnmount {
     fn drop(&mut self) {
         if !self.defused {
-            let _ = umount2(self.inner.as_ref().unwrap().path(), MntFlags::MNT_DETACH);
+            umount2(self.inner.as_ref().unwrap().path(), MntFlags::MNT_DETACH).unwrap();
         }
     }
 }
