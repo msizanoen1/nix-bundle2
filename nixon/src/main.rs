@@ -61,7 +61,7 @@ impl Drop for AutoUnmount {
 fn main() -> Result<(), anyhow::Error> {
     let mut args = env::args().skip(1);
     let dir = if let Some(arg) = args.next() {
-        PathBuf::from("/.oldroot").join(fs::canonicalize(&arg)?)
+        PathBuf::from("/.oldroot").join(fs::canonicalize(&arg)?.strip_prefix("/")?)
     } else {
         return Err(anyhow!("Usage: nixon <nix store> <command> [args...]"));
     };
