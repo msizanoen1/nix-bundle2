@@ -99,8 +99,6 @@ fn main() -> Result<(), anyhow::Error> {
     setup_mounts(&dir).context("Setup mounts")?;
     new_root.take().close().context("Remove tmp dir")?;
     env::set_current_dir(&old_cwd)?;
-    umount2("/.oldroot", MntFlags::MNT_DETACH)?;
-    fs::remove_dir("/.oldroot").context("Cleanup")?;
     Command::new(&cmd).args(&rest).exec();
     Ok(())
 }
