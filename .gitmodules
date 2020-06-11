@@ -1,4 +1,0 @@
-[submodule "nix-user-chroot"]
-	path = nix-user-chroot
-	url = https://github.com/msizanoen1/nix-user-chroot
-	branch = nix-bundle2
