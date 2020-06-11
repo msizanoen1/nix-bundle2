@@ -111,6 +111,7 @@ fn bind_mount<F: AsRef<Path> + ?Sized, T: AsRef<Path> + ?Sized>(
 ) -> Result<(), anyhow::Error> {
     let from = from.as_ref();
     let to = to.as_ref();
+    let _ = umount2(to, MntFlags::MNT_DETACH);
     if let Ok(dest) = fs::read_link(&from) {
         unix_fs::symlink(&dest, &to).context("Replicate symlink")?;
         return Ok(());
