@@ -53,7 +53,7 @@ impl std::ops::DerefMut for AutoUnmount {
 impl Drop for AutoUnmount {
     fn drop(&mut self) {
         if !self.defused {
-            umount2(self.inner.as_ref().unwrap().path(), MntFlags::MNT_DETACH).unwrap();
+            let _ = umount2(self.inner.as_ref().unwrap().path(), MntFlags::MNT_DETACH);
         }
     }
 }
@@ -61,7 +61,7 @@ impl Drop for AutoUnmount {
 fn main() -> Result<(), anyhow::Error> {
     let mut args = env::args().skip(1);
     let dir = if let Some(arg) = args.next() {
-        arg
+        PathBuf::from("/.oldroot").join(fs::canonicalize(&arg)?)
     } else {
         return Err(anyhow!("Usage: nixon <nix store> <command> [args...]"));
     };
@@ -96,8 +96,8 @@ fn main() -> Result<(), anyhow::Error> {
     fs::create_dir(new_root.path().join(".oldroot")).context("Create .oldroot")?;
     let old_cwd = env::current_dir()?;
     pivot_root(new_root.path(), &new_root.path().join(".oldroot")).context("Set root directory")?;
-    setup_mounts(&dir)?;
-    new_root.take().close()?;
+    setup_mounts(&dir).context("Setup mounts")?;
+    new_root.take().close().context("Remove tmp dir")?;
     env::set_current_dir(&old_cwd)?;
     umount2("/.oldroot", MntFlags::MNT_DETACH)?;
     Command::new(&cmd).args(&rest).exec();
@@ -157,7 +157,8 @@ fn setup_mounts<T: AsRef<Path> + ?Sized>(store: &T) -> Result<(), anyhow::Error>
             Some("tmpfs"),
             MsFlags::empty(),
             Some("mode=0555"),
-        )?;
+        )
+        .context("nixstorefs")?;
         merge_store("/.oldroot/nix/store", "/nix/store")?;
     } else {
         fs::create_dir_all("/nix/store")?;
@@ -174,7 +175,7 @@ fn setup_mounts<T: AsRef<Path> + ?Sized>(store: &T) -> Result<(), anyhow::Error>
         }
         let from = old_root.join(&name);
         let to = root.join(&name);
-        bind_mount(&from, &to)?;
+        bind_mount(&from, &to).context("Create bind mount")?;
     }
     Ok(())
 }
