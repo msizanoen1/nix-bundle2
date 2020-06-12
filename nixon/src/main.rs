@@ -112,11 +112,14 @@ fn main() -> Result<(), anyhow::Error> {
     fs::create_dir(new_root.path().join(".oldroot")).context("Create .oldroot")?;
     let old_cwd = env::current_dir()?;
     pivot_root(new_root.path(), &new_root.path().join(".oldroot")).context("Set root directory")?;
+    safe_umount(&PathBuf::from("/.oldroot").join(new_root.path().strip_prefix("/")?))?;
+    fs::remove_dir(
+        PathBuf::from("/.oldroot").join(new_root.take().into_path().strip_prefix("/")?),
+    )?;
     setup_mounts(&dir).context("Setup mounts")?;
     env::set_current_dir(&old_cwd)?;
     safe_umount("/.oldroot")?;
     fs::remove_dir("/.oldroot")?;
-    drop(new_root);
     Err(Command::new(&cmd).args(&rest).exec().into())
 }
 
