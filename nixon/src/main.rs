@@ -55,9 +55,21 @@ impl std::ops::DerefMut for AutoUnmount {
 impl Drop for AutoUnmount {
     fn drop(&mut self) {
         if !self.defused {
-            umount2(self.inner.as_ref().unwrap().path(), MntFlags::MNT_DETACH).unwrap();
+            safe_umount(self.inner.as_ref().unwrap().path()).unwrap();
         }
     }
+}
+
+fn safe_umount<F: AsRef<Path> + ?Sized>(path: &F) -> Result<(), anyhow::Error> {
+    mount(
+        None::<&str>,
+        path.as_ref(),
+        None::<&str>,
+        MsFlags::MS_SLAVE | MsFlags::MS_REC,
+        None::<&str>,
+    )?;
+    umount2(path.as_ref(), MntFlags::MNT_DETACH)?;
+    Ok(())
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -87,21 +99,7 @@ fn main() -> Result<(), anyhow::Error> {
         unshare(CloneFlags::CLONE_NEWNS)?;
     }
 
-    mount(
-        Some(new_root.path()),
-        new_root.path(),
-        None::<&str>,
-        MsFlags::MS_BIND | MsFlags::MS_REC,
-        None::<&str>,
-    )?;
-    mount(
-        None::<&str>,
-        new_root.path(),
-        None::<&str>,
-        MsFlags::MS_SLAVE | MsFlags::MS_REC,
-        None::<&str>,
-    )?;
-
+    create_intermediate_mnt(new_root.path())?;
     mount(
         Some("nixuserchrootfs"),
         new_root.path(),
@@ -116,17 +114,28 @@ fn main() -> Result<(), anyhow::Error> {
     pivot_root(new_root.path(), &new_root.path().join(".oldroot")).context("Set root directory")?;
     setup_mounts(&dir).context("Setup mounts")?;
     env::set_current_dir(&old_cwd)?;
+    safe_umount("/.oldroot")?;
+    fs::remove_dir("/.oldroot")?;
+    drop(new_root);
+    Err(Command::new(&cmd).args(&rest).exec().into())
+}
+
+fn create_intermediate_mnt<F: AsRef<Path> + ?Sized>(path: &F) -> Result<(), anyhow::Error> {
+    mount(
+        Some(path.as_ref()),
+        path.as_ref(),
+        None::<&str>,
+        MsFlags::MS_BIND | MsFlags::MS_REC,
+        None::<&str>,
+    )?;
     mount(
         None::<&str>,
-        "/.oldroot",
+        path.as_ref(),
         None::<&str>,
         MsFlags::MS_SLAVE | MsFlags::MS_REC,
         None::<&str>,
     )?;
-    umount2("/.oldroot", MntFlags::MNT_DETACH)?;
-    fs::remove_dir("/.oldroot")?;
-    drop(new_root);
-    Err(Command::new(&cmd).args(&rest).exec().into())
+    Ok(())
 }
 
 fn bind_mount<F: AsRef<Path> + ?Sized, T: AsRef<Path> + ?Sized>(
