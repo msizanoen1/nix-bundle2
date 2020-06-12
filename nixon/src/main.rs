@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use nix::mount::{mount, umount2, MntFlags, MsFlags};
 use nix::sched::{unshare, CloneFlags};
 use nix::unistd::{getgid, getuid, pivot_root};
@@ -61,14 +61,11 @@ impl Drop for AutoUnmount {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    let mut args = env::args().skip(1);
-    let dir = if let Some(arg) = args.next() {
-        PathBuf::from("/.oldroot").join(fs::canonicalize(&arg)?.strip_prefix("/")?)
-    } else {
-        return Err(anyhow!("Usage: nixon <nix store> <command> [args...]"));
-    };
-    let cmd = args.next().ok_or_else(|| anyhow!("No command specified"))?;
+    let args = env::args().skip(1);
     let rest = args.collect::<Vec<_>>();
+    let exedir = env::current_exe()?.parent().unwrap().to_owned();
+    let dir = PathBuf::from("/.oldroot").join(exedir.join("usr").join("lib").strip_prefix("/")?);
+    let cmd = fs::read_to_string(exedir.join("nixon_command.txt"))?;
     let uid = getuid();
     let gid = getgid();
     let new_root = tempdir()?;
@@ -118,7 +115,6 @@ fn main() -> Result<(), anyhow::Error> {
     let old_cwd = env::current_dir()?;
     pivot_root(new_root.path(), &new_root.path().join(".oldroot")).context("Set root directory")?;
     setup_mounts(&dir).context("Setup mounts")?;
-    drop(new_root);
     env::set_current_dir(&old_cwd)?;
     mount(
         None::<&str>,
@@ -129,8 +125,8 @@ fn main() -> Result<(), anyhow::Error> {
     )?;
     umount2("/.oldroot", MntFlags::MNT_DETACH)?;
     fs::remove_dir("/.oldroot")?;
-    Command::new(&cmd).args(&rest).exec();
-    Ok(())
+    drop(new_root);
+    Err(Command::new(&cmd).args(&rest).exec().into())
 }
 
 fn bind_mount<F: AsRef<Path> + ?Sized, T: AsRef<Path> + ?Sized>(
