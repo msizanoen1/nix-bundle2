@@ -98,7 +98,7 @@ fn main() -> Result<(), anyhow::Error> {
         None::<&str>,
         new_root.path(),
         None::<&str>,
-        MsFlags::MS_PRIVATE | MsFlags::MS_REC,
+        MsFlags::MS_SLAVE | MsFlags::MS_REC,
         None::<&str>,
     )?;
 
@@ -120,7 +120,7 @@ fn main() -> Result<(), anyhow::Error> {
         None::<&str>,
         "/.oldroot",
         None::<&str>,
-        MsFlags::MS_PRIVATE | MsFlags::MS_REC,
+        MsFlags::MS_SLAVE | MsFlags::MS_REC,
         None::<&str>,
     )?;
     umount2("/.oldroot", MntFlags::MNT_DETACH)?;
@@ -182,7 +182,7 @@ fn setup_mounts<T: AsRef<Path> + ?Sized>(store: &T) -> Result<(), anyhow::Error>
             None::<&str>,
             "/nix",
             None::<&str>,
-            MsFlags::MS_PRIVATE | MsFlags::MS_REC,
+            MsFlags::MS_SLAVE | MsFlags::MS_REC,
             None::<&str>,
         )?;
         mount(
