@@ -25,10 +25,12 @@ impl AutoUnmount {
         }
     }
 
+    #[allow(dead_code)]
     fn defuse(&mut self) {
         self.defused = true;
     }
 
+    #[allow(dead_code)]
     fn take(mut self) -> TempDir {
         self.defuse();
         let dir = self.inner.take().unwrap();
@@ -70,19 +72,38 @@ fn main() -> Result<(), anyhow::Error> {
     let uid = getuid();
     let gid = getgid();
     let new_root = tempdir()?;
-    unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER)?;
-    fs::File::create("/proc/self/setgroups")
-        .context("Open setgroups")?
-        .write_all(b"deny")
-        .context("Deny setgroups")?;
-    fs::File::create("/proc/self/uid_map")
-        .context("Open uid_map")?
-        .write_all(format!("{} {} 1", uid, uid).as_bytes())
-        .context("Set uid map")?;
-    fs::File::create("/proc/self/gid_map")
-        .context("Open gid_map")?
-        .write_all(format!("{} {} 1", gid, gid).as_bytes())
-        .context("Set gid map")?;
+    if !uid.is_root() {
+        unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER)?;
+        fs::File::create("/proc/self/setgroups")
+            .context("Open setgroups")?
+            .write_all(b"deny")
+            .context("Deny setgroups")?;
+        fs::File::create("/proc/self/uid_map")
+            .context("Open uid_map")?
+            .write_all(format!("{} {} 1", uid, uid).as_bytes())
+            .context("Set uid map")?;
+        fs::File::create("/proc/self/gid_map")
+            .context("Open gid_map")?
+            .write_all(format!("{} {} 1", gid, gid).as_bytes())
+            .context("Set gid map")?;
+    } else {
+        unshare(CloneFlags::CLONE_NEWNS)?;
+    }
+
+    mount(
+        Some(new_root.path()),
+        new_root.path(),
+        None::<&str>,
+        MsFlags::MS_BIND | MsFlags::MS_REC,
+        None::<&str>,
+    )?;
+    mount(
+        None::<&str>,
+        new_root.path(),
+        None::<&str>,
+        MsFlags::MS_PRIVATE | MsFlags::MS_REC,
+        None::<&str>,
+    )?;
 
     mount(
         Some("nixuserchrootfs"),
@@ -97,8 +118,17 @@ fn main() -> Result<(), anyhow::Error> {
     let old_cwd = env::current_dir()?;
     pivot_root(new_root.path(), &new_root.path().join(".oldroot")).context("Set root directory")?;
     setup_mounts(&dir).context("Setup mounts")?;
-    new_root.take().close().context("Remove tmp dir")?;
+    drop(new_root);
     env::set_current_dir(&old_cwd)?;
+    mount(
+        None::<&str>,
+        "/.oldroot",
+        None::<&str>,
+        MsFlags::MS_PRIVATE | MsFlags::MS_REC,
+        None::<&str>,
+    )?;
+    umount2("/.oldroot", MntFlags::MNT_DETACH)?;
+    fs::remove_dir("/.oldroot")?;
     Command::new(&cmd).args(&rest).exec();
     Ok(())
 }
@@ -110,6 +140,7 @@ fn bind_mount<F: AsRef<Path> + ?Sized, T: AsRef<Path> + ?Sized>(
     let from = from.as_ref();
     let to = to.as_ref();
     let _ = umount2(to, MntFlags::MNT_DETACH);
+    let _ = fs::remove_file(to);
     if let Ok(dest) = fs::read_link(&from) {
         unix_fs::symlink(&dest, &to).context("Replicate symlink")?;
         return Ok(());
@@ -151,6 +182,13 @@ fn setup_mounts<T: AsRef<Path> + ?Sized>(store: &T) -> Result<(), anyhow::Error>
         .unwrap_or(false)
     {
         bind_mount("/.oldroot/nix", "/nix")?;
+        mount(
+            None::<&str>,
+            "/nix",
+            None::<&str>,
+            MsFlags::MS_PRIVATE | MsFlags::MS_REC,
+            None::<&str>,
+        )?;
         mount(
             Some("nixstorefs"),
             "/nix/store",
