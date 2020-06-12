@@ -1,7 +1,7 @@
 use anyhow::Context;
 use nix::mount::{mount, umount2, MntFlags, MsFlags};
 use nix::sched::{unshare, CloneFlags};
-use nix::unistd::{getgid, getuid, pivot_root};
+use nix::unistd::{getegid, geteuid, pivot_root};
 use std::convert::AsRef;
 use std::env;
 use std::fs;
@@ -66,8 +66,8 @@ fn main() -> Result<(), anyhow::Error> {
     let exedir = env::current_exe()?.parent().unwrap().to_owned();
     let dir = PathBuf::from("/.oldroot").join(exedir.join("usr").join("lib").strip_prefix("/")?);
     let cmd = fs::read_to_string(exedir.join("nixon_command.txt"))?;
-    let uid = getuid();
-    let gid = getgid();
+    let uid = geteuid();
+    let gid = getegid();
     let new_root = tempdir()?;
     if !uid.is_root() {
         unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER)?;
