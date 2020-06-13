@@ -93,6 +93,7 @@ fn main() -> Result<(), anyhow::Error> {
         (cmd, rest, dir)
     } else {
         let CliFallback { dir, cmd, args } = CliFallback::from_args();
+        let dir = PathBuf::from("/.oldroot").join(fs::canonicalize(&dir)?.strip_prefix("/")?);
         (cmd, args, dir)
     };
     let uid = geteuid();
