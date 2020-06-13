@@ -10,6 +10,7 @@ use std::os::unix::fs as unix_fs;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use structopt::StructOpt;
 use tempfile::{tempdir, TempDir};
 
 struct AutoUnmount {
@@ -72,12 +73,28 @@ fn safe_umount<F: AsRef<Path> + ?Sized>(path: &F) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Runtime support binary for Nix-based AppDir and AppImage
+#[derive(StructOpt)]
+struct CliFallback {
+    /// Nix store directory
+    dir: PathBuf,
+    /// Command to run
+    cmd: String,
+    /// Arguments for command
+    args: Vec<String>,
+}
+
 fn main() -> Result<(), anyhow::Error> {
     let args = env::args().skip(1);
     let rest = args.collect::<Vec<_>>();
     let exedir = env::current_exe()?.parent().unwrap().to_owned();
     let dir = PathBuf::from("/.oldroot").join(exedir.join("usr").join("lib").strip_prefix("/")?);
-    let cmd = fs::read_to_string(exedir.join("nixon_command.txt"))?;
+    let (cmd, args, dir) = if let Ok(cmd) = fs::read_to_string(exedir.join("nixon_command.txt")) {
+        (cmd, rest, dir)
+    } else {
+        let CliFallback { dir, cmd, args } = CliFallback::from_args();
+        (cmd, args, dir)
+    };
     let uid = geteuid();
     let gid = getegid();
     let new_root = tempdir()?;
@@ -120,7 +137,7 @@ fn main() -> Result<(), anyhow::Error> {
     env::set_current_dir(&old_cwd)?;
     safe_umount("/.oldroot")?;
     fs::remove_dir("/.oldroot")?;
-    Err(Command::new(&cmd).args(&rest).exec().into())
+    Err(Command::new(&cmd).args(&args).exec().into())
 }
 
 fn create_intermediate_mnt<F: AsRef<Path> + ?Sized>(path: &F) -> Result<(), anyhow::Error> {
